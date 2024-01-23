@@ -19,10 +19,11 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity
 from homeassistant.const import (
     DEVICE_CLASS_POWER,
+    DEVICE_CLASS_BATTERY,
     POWER_WATT,
     CONF_SCAN_INTERVAL,
     DEVICE_CLASS_ENERGY,
-    ENERGY_KILO_WATT_HOUR,
+    ENERGY_KILO_WATT_HOUR, PERCENTAGE,
 )
 from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
@@ -83,6 +84,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     powerflow = result["powerflow"]
 
                 powerflow["sn"] = result["homKit"]["sn"]
+                powerflow["sn"] = powerflow.get("sn", "homeKit")
+                powerflow["name"] = powerflow.get("name", "homeKit")
                 #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = result["kpi"]["total_power"]
@@ -119,15 +122,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
     async_add_entities(
-        SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+        SemsSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent != "homeKit"
     )
     async_add_entities(
         SemsStatisticsSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data)
-    )
-    async_add_entities(
-        SemsPowerflowSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+        for idx, ent in enumerate(coordinator.data) if ent != "homeKit"
     )
     async_add_entities(
         SemsTotalImportSensor(coordinator, ent)
@@ -135,6 +135,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
     async_add_entities(
         SemsTotalExportSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsPowerflowSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        BatterySensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
 
@@ -240,6 +248,78 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         """
         await self.coordinator.async_request_refresh()
 
+class BatterySensor(CoordinatorEntity, SensorEntity):
+    """BatterySensor using CoordinatorEntity."""
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating BatterySensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_BATTERY
+
+    @property
+    def unit_of_measurement(self):
+        return PERCENTAGE
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Battery Percentage {self.sn}"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.sn}_battery_percentage"
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        return self.coordinator.data[self.sn].get("soc", 0)
+
+    # Optional: Add any additional attributes specific to your battery data
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes of the monitored battery."""
+        data = self.coordinator.data
+        attributes = {k: v for k, v in data.items() if k is not None and v is not None}
+        # Add any additional attributes specific to your battery data
+        return attributes
+
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def available(self):
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    # Optional: Add device information if applicable
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                (DOMAIN, self.sn)
+            },
+            "name": self.name,
+            "manufacturer": "SSSS",
+            # Add any other device info specific to your battery
+        }
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity."""
+        await self.coordinator.async_request_refresh()
 
 class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
