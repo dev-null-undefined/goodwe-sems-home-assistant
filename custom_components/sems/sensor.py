@@ -138,6 +138,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
     async_add_entities(
+        SemsTotalPVSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
         SemsPowerflowSensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
@@ -307,7 +311,7 @@ class BatterySensor(CoordinatorEntity, SensorEntity):
                 (DOMAIN, self.sn)
             },
             "name": self.name,
-            "manufacturer": "SSSS",
+            "manufacturer": "Baterka",
             # Add any other device info specific to your battery
         }
 
@@ -419,7 +423,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import"
+        return f"HomeKit Koupeno"
 
     @property
     def unique_id(self) -> str:
@@ -490,7 +494,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export"
+        return f"HomeKit Prodáno"
 
     @property
     def unique_id(self) -> str:
@@ -501,6 +505,76 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
         """Return the state of the device."""
         data = self.coordinator.data[self.sn]
         return data["Charts_sell"]
+    def statusText(self, status) -> str:
+        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        return labels[status] if status in labels else "Unknown"
+
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.sn)
+            },
+            "name": "Homekit",
+            "manufacturer": "GoodWe",
+        }
+
+    @property
+    def state_class(self):
+        """used by Metered entities / Long Term Statistics"""
+        return STATE_CLASS_TOTAL_INCREASING
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
+class SemsTotalPVSensor(CoordinatorEntity, SensorEntity):
+    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsTotalPVSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_ENERGY
+
+    @property
+    def unit_of_measurement(self):
+        return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"HomeKit PV"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.coordinator.data[self.sn]['sn']}-pv-energy"
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        data = self.coordinator.data[self.sn]
+        return data["Charts_sum"]
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
