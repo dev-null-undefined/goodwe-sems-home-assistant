@@ -149,6 +149,18 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         BatterySensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
+    async_add_entities(
+        SemsLoadSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsGridSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsBatterySensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
 
 class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
@@ -178,7 +190,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']}"
+        return f"Solární panely {self.coordinator.data[self.sn]['name']}"
 
     @property
     def unique_id(self) -> str:
@@ -721,3 +733,269 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
         Only used by the generic entity update service.
         """
         await self.coordinator.async_request_refresh()
+
+class SemsGridSensor(CoordinatorEntity, SensorEntity):
+    """SemsSensor using CoordinatorEntity.
+
+    The CoordinatorEntity class provides:
+      should_poll
+      async_update
+      async_added_to_hass
+      available
+    """
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_POWER
+
+    @property
+    def unit_of_measurement(self):
+        return POWER_WATT
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Grid {self.coordinator.data[self.sn]['name']}"
+
+    @property
+    def unique_id(self) -> str:
+        return self.coordinator.data[self.sn]["sn"]
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        load = data["grid"]
+
+        if load:
+            load = load.replace('(W)', '')
+
+        if data["gridStatus"] == 1:
+            return "-"+load
+        return load
+
+    # For backwards compatibility
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def available(self):
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    # Optional: Add device information if applicable
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                (DOMAIN, self.sn)
+            },
+            "name": self.name,
+            "manufacturer": "Baterka",
+            # Add any other device info specific to your battery
+        }
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
+
+class SemsBatterySensor(CoordinatorEntity, SensorEntity):
+    """SemsSensor using CoordinatorEntity.
+
+    The CoordinatorEntity class provides:
+      should_poll
+      async_update
+      async_added_to_hass
+      available
+    """
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_POWER
+
+    @property
+    def unit_of_measurement(self):
+        return POWER_WATT
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Battery {self.coordinator.data[self.sn]['name']}"
+
+    @property
+    def unique_id(self) -> str:
+        return self.coordinator.data[self.sn]["sn"]
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        load = data["bettery"]
+
+        if load:
+            load = load.replace('(W)', '')
+
+        if data["betteryStatus"] == -1:
+            return "-"+load
+        return load
+
+    # For backwards compatibility
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def available(self):
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    # Optional: Add device information if applicable
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                (DOMAIN, self.sn)
+            },
+            "name": self.name,
+            "manufacturer": "Baterka",
+            # Add any other device info specific to your battery
+        }
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
+class SemsLoadSensor(CoordinatorEntity, SensorEntity):
+    """SemsSensor using CoordinatorEntity.
+
+    The CoordinatorEntity class provides:
+      should_poll
+      async_update
+      async_added_to_hass
+      available
+    """
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_POWER
+
+    @property
+    def unit_of_measurement(self):
+        return POWER_WATT
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Load {self.coordinator.data[self.sn]['name']}"
+
+    @property
+    def unique_id(self) -> str:
+        return self.coordinator.data[self.sn]["sn"]
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        load = data["load"]
+
+        if load:
+            load = load.replace('(W)', '')
+
+        if data["loadStatus"] == -1:
+            return load
+        return 0
+
+    # For backwards compatibility
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def available(self):
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    # Optional: Add device information if applicable
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                (DOMAIN, self.sn)
+            },
+            "name": self.name,
+            "manufacturer": "Baterka",
+            # Add any other device info specific to your battery
+        }
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
